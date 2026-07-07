@@ -15,9 +15,9 @@ import (
 )
 
 func main() {
-	
+
 	os.MkdirAll("./data", os.ModePerm)
-	db, err := database.InitDB("./data/audiomatch.db", "./db/migrations/001_init.sql")
+	db, err := database.InitDB("./data/audiomatch.db")
 	if err != nil {
 		log.Fatalf("Database initialization failed: %v", err)
 	}

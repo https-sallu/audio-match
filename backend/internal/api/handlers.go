@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,16 +18,17 @@ import (
 )
 
 type API struct {
-	repo repository.Repository
+	repo *repository.SQLiteRepo
 }
 
-func NewAPI(repo repository.Repository) *API {
+func NewAPI(repo *repository.SQLiteRepo) *API {
 	return &API{repo: repo}
 }
 
 func (api *API) HandleListSongs(w http.ResponseWriter, r *http.Request) {
 	songs, err := api.repo.GetSongs(r.Context())
 	if err != nil {
+		// Log removed from here, it was the wrong endpoint!
 		http.Error(w, "Failed to fetch songs", http.StatusInternalServerError)
 		return
 	}
@@ -98,7 +100,7 @@ func (api *API) HandleImport(w http.ResponseWriter, r *http.Request) {
 	os.MkdirAll(datasetDir, os.ModePerm)
 	filename := fmt.Sprintf("%d_%s", time.Now().Unix(), header.Filename)
 	filePath := filepath.Join(datasetDir, filename)
-	
+
 	dst, err := os.Create(filePath)
 	if err != nil {
 		http.Error(w, "Failed to save file", http.StatusInternalServerError)
@@ -116,9 +118,11 @@ func (api *API) HandleImport(w http.ResponseWriter, r *http.Request) {
 
 	duration := float64(len(audioData)) / float64(dsp.ExpectedSampleRate)
 	song := &models.Song{Title: title, Artist: artist, Duration: duration, FilePath: filePath}
-	
+
 	id, err := api.repo.InsertSong(r.Context(), song)
 	if err != nil {
+		// X-RAY LOG 1: Checks if inserting the basic song data fails
+		log.Printf("🚨 UPLOAD CRASH REASON (InsertSong): %v\n", err)
 		http.Error(w, "Failed to insert song", http.StatusInternalServerError)
 		return
 	}
@@ -129,6 +133,8 @@ func (api *API) HandleImport(w http.ResponseWriter, r *http.Request) {
 	fingerprints := dsp.GenerateFingerprints(peaks, song.ID)
 
 	if err := api.repo.BatchInsertFingerprints(r.Context(), fingerprints); err != nil {
+		// X-RAY LOG 2: Checks if the mass fingerprint insertion fails
+		log.Printf("🚨 UPLOAD CRASH REASON (BatchInsert): %v\n", err)
 		api.repo.DeleteSong(r.Context(), song.ID)
 		http.Error(w, "Failed to save fingerprints", http.StatusInternalServerError)
 		return

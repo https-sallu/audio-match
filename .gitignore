@@ -1,0 +1,9 @@
+# Ignore database files
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Ignore audio testing files
+*.wav
+*.mp3

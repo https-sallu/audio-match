@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
+
 	"github.com/yourorg/audio-match/internal/models"
 )
 
@@ -68,40 +70,42 @@ func (r *SQLiteRepo) GetSongByID(ctx context.Context, id int64) (*models.Song, e
 }
 
 func (r *SQLiteRepo) DeleteSong(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM songs WHERE id = ?`, id)
+	_, err := r.db.ExecContext(ctx, "DELETE FROM songs WHERE id = ?", id)
 	return err
 }
 
+// Keep YOUR exact function signature here (the variables might be named slightly differently)
 func (r *SQLiteRepo) BatchInsertFingerprints(ctx context.Context, fingerprints []models.Fingerprint) error {
-	if len(fingerprints) == 0 {
-		return nil
-	}
-	const chunkSize = 10000
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
+		log.Printf("🔥 DB Error (BeginTx): %v\n", err)
 		return err
 	}
-	defer tx.Rollback()
 
-	for i := 0; i < len(fingerprints); i += chunkSize {
-		end := i + chunkSize
-		if end > len(fingerprints) {
-			end = len(fingerprints)
-		}
-		chunk := fingerprints[i:end]
-		valueStrings := make([]string, 0, len(chunk))
-		valueArgs := make([]interface{}, 0, len(chunk)*3)
+	// 🚨 IMPORTANT: I changed 'offset' to 'anchor_time' here to match your struct!
+	// If your database actually uses the word 'offset', change it back.
+	stmt, err := tx.PrepareContext(ctx, "INSERT INTO fingerprints (song_id, hash, anchor_time) VALUES (?, ?, ?)")
+	if err != nil {
+		log.Printf("🔥 DB Error (Prepare): %v\n", err)
+		tx.Rollback()
+		return err
+	}
+	defer stmt.Close()
 
-		for _, fp := range chunk {
-			valueStrings = append(valueStrings, "(?, ?, ?)")
-			valueArgs = append(valueArgs, fp.SongID, fp.Hash, fp.AnchorTime)
-		}
-		query := fmt.Sprintf("INSERT INTO fingerprints (song_id, hash, anchor_time) VALUES %s", strings.Join(valueStrings, ","))
-		if _, err := tx.ExecContext(ctx, query, valueArgs...); err != nil {
+	for _, fp := range fingerprints {
+		_, err = stmt.ExecContext(ctx, fp.SongID, fp.Hash, fp.AnchorTime)
+		if err != nil {
+			log.Printf("🔥 DB Error (Exec): %v\n", err)
+			tx.Rollback()
 			return err
 		}
 	}
-	return tx.Commit()
+
+	if err = tx.Commit(); err != nil {
+		log.Printf("🔥 DB Error (Commit): %v\n", err)
+		return err
+	}
+	return nil
 }
 
 func (r *SQLiteRepo) FindMatchesByHashes(ctx context.Context, hashes []string) ([]models.Fingerprint, error) {
