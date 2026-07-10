@@ -7,3 +7,6 @@ data/
 # Ignore audio testing files
 *.wav
 *.mp3
+
+# Ignore Node dependencies
+node_modules/
