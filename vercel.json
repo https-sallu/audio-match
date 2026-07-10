@@ -7,7 +7,7 @@
         "backend": {
             "root": "backend",
             "framework": "go",
-            "entrypoint": "main.go"
+            "entrypoint": "cmd/server/main.go"
         }
     }
 }
